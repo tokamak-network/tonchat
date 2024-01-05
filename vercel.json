@@ -1,0 +1,12 @@
+{
+    "build": {
+      "env": {
+        // 환경 변수 설정
+      },
+      "commands": [
+        "python -m venv venv",
+        "source venv/bin/activate",
+        "pip install -r requirements.txt"
+      ]
+    }
+  }
