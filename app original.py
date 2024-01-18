@@ -3,49 +3,30 @@ from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings # embedding에 사용할 2개의 API
-from langchain.vectorstores import FAISS # 페이스북이 만든 고속 Vector DB. 페이스북 라이브러리와 구별을 위해 langchain에서는 대문자 표기
+from langchain.vectorstores import FAISS # 문서검색을 담당하는 페이스북이 만든 고속 Vector DB. 로컬에 설치하며, 프로그램 종료시 DB는 삭제됨
 from htmlTemplates import css, bot_template, user_template   # htmlTemplates.py 파일안에 있는 모듈들을 가져옴
-import os # host server안에 db 폴더 생성하는 st.file_uploader.getbuffer() 사용시 필요
-import numpy as np
 
-# STEP 1 : pdf파일 업로드
-def save_pdf(_pdf_docs):
-    # data 폴더가 없으면 생성
-    if not os.path.exists('data'):
-        os.makedirs('data')
-    # 업로드된 파일을 data 폴더에 저장
-    # vector 폴더에 해당 pdf 파일명으로(uploadedfile.name 속성 이용) binary 파일을 생성한 후
-    # wb 옵션으로 binary writting이 가능하도록 한 상태로 일단 open
-    # 업로드한 파일내용이 임시저장된 uploadedfile.getbuffer 메소드를 불러와서, open된 binary 파일안에 내용을 binary로 읽어와서 저장
-    for uploaded_file in _pdf_docs:
-        with open(os.path.join('data', uploaded_file.name), 'wb') as f:
-            f.write(uploaded_file.getbuffer())
-
-# STEP 2 : 업로드된 여러개의 pdf파일 리스트인 pdf_docs --> 이에 대해 text만 추출하는 과정
-def get_pdf_text(_pdf_docs):
+def get_pdf_text(pdf_docs):
     # 빈 text 배열 생성
     text = ""
-    for pdf in _pdf_docs: # 각 pdf 파일
-        # 각 pdf 파일을 일단 PdfReader클래스의 객체로 생성
+    for pdf in pdf_docs:
+        # 페이지별로 배열을 리턴해주는 PdfReader클래스의 객체 생성
         pdf_reader = PdfReader(pdf)
-        # PdfReader 객체의 pages() 메소드 활용 --> 각 페이지별 내용을 추출
         for page in pdf_reader.pages:
-            # 각 페이지 객체의 extract_text() 메소드 활용 --> 텍스트를 추출하여 모든 text라는 하나의 파일에 저장 (이때, 페이지별로 구분되어 저장됨)
+            # 각 페이지의 텍스트를 추출하여 모든 text를 배열로 저장 --> extract_text 매소드를 이용
             text += page.extract_text()
     return text
 
-# STEP 3 : 추출된 text를 chunk단위로 끊기 --> CST 객체 생성 --> split_text() 메소드 이용
-def get_text_chunk(_text):
+def  get_text_chunk(text):
     text_splitter = CharacterTextSplitter(
         separator="\n",
         chunk_size=1000,
         chunk_overlap=200,
         length_function=len
     )
-    chunks = text_splitter.split_text(_text)
+    chunks = text_splitter.split_text(text)
     return chunks
 
-# STEP 4 : chunk를 vector DB로 변환
 def get_vectorstore(text_chunks):
     ##############################
     #     embedding API 선택      #
@@ -63,43 +44,17 @@ def get_vectorstore(text_chunks):
     vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
     return vectorstore
 
-
-# STEP 5 : vector DB 저장 및 불러오기
-# FAISS 방식으로 vectorized된 DB (FAISS에서는 FAISS Index라고 불림)
-
-# FAISS 인덱스 파일을 저장할 경로를 지정
-VECTORDB_PATH = 'vectordd/vectorstore.faiss'
-
-def update_vectorstore(_vectorstore, _VECTORDB_PATH)
-    if os.path.exists(_VECTORDB_PATH):
-        # 파일이 존재하는 경우 FAISS 인덱스 파일 불러오기
-        # OpenAI embedding API 사용시 (유료)
-        embeddings = OpenAIEmbeddings()
-        loaded_vectorstore = FAISS.load_local(_VECTORDB_PATH, embeddings)
-        # 로딩된 기존 FAISS 인덱스 파일에 새로운 벡터인 vetorsstore를 추가
-        loaded_vectorstore.merge(_vectorstore)
-    else:
-        # 파일이 존재하지 않는 경우 FAISS 인덱스 파일 신규생성
-        FAISS.write_index(_vectorstore, VECTORDB_PATH)
-
-def call_vectorstore():
-    # OpenAI embedding API 사용시 (유료)
-    embeddings = OpenAIEmbeddings()
-    loaded_vectorstore = FAISS.load_local(VECTORDB_PATH, embeddings)
-    return loaded_vectorstore
-
-# STEP 6 : user의 질문과 가장 근접한 내용을 저장된 vector DB애서 검색하고 대답할 수 있는 객체를 생성
 # get_conversation_chain(vectorscore) 실행에 필요한 모듈
 from langchain.chat_models import ChatOpenAI # ConversationBufferMemory()의 인자로 들어갈 llm으로 ChatOpenAI모델을 사용하기로 함
 from langchain.memory import ConversationBufferMemory # 대화내용을 저장하는 memory
 from langchain.chains import ConversationalRetrievalChain
 
-#################
-#  핵심 함수 GCC  #
-#################
+######################################################
+#  핵심 함수 GCC : get_conversation_chain(vectorscore) #
+######################################################
 # 입력 : VectorDB
-# 출력 : 질문을 입력하면 입력된 상기 VectorDB에 대한 검색과 결과출력을 담당하는 ConversationalRetrievalChain.from_llm의 객체를 생성하여 반환함
-def get_conversation_chain(_loaded_vectorscore):
+# 출력 : 질문을 입력하면 DB 검색과 결과출력을 담당하는 ConversationalRetrievalChain.from_llm의 객체를 생성하여 반환함
+def get_conversation_chain(vectorscore):
 
     # 선택 1: 대화에 사용될 llm API 객체를 llm 변수에 저장
     llm = ChatOpenAI()
@@ -115,21 +70,18 @@ def get_conversation_chain(_loaded_vectorscore):
         # 검색을 실행하는 llm 선택
         llm=llm,
         # 검색을 당하는 vector DB를 retriver 포맷으로 저장
-        retriever = _loaded_vectorscore.as_retriever(),
+        retriever=vectorscore.as_retriever(),
         # 사용자와 대화내용을 메모리에 저장하여 같은 맥락에서 대화를 유지
         memory=memory
     )
     # ConversationalRetrievalChain.from_llm 객체로 생성된 convestaion_chain을 반환
     return conversation_chain
 
-# STEP 5 : user의 질문과 가장 근접한 내용을 저장된 vector DB애서 검색하고 대답할 수 있는 객체에 실제 질문을 입력하고 대답을 반환받음
-###########################
-# 핵심함수 handle_userinput #
-###########################
-# 인자인 user_question는 user로부터 받은 질문이며, 이를 인자로 넣으면 대답을 반환하는 함수
+######################################################
+#              핵심 함수 handle_userinput              #
+######################################################
+# user에 받은 질문을 인자로 넣으면 대답을 반환하는 함수
 # 핵심함수 GCC에 의해 생성된 st.session_sate.converstaion 객체의 메소드를 활용하여 대답을 생성함
-# 즉, 겉으로는 안드러나지만 st.session_sate.converstaion안에는 GCC 함수가 있음
-
 def handle_userinput(user_question) :
     # 질문을 입력하면 DB 검색과 결과출력을 담당하는 ConversationalRetrievalChain.from_llm의 객체로 생성된 것이
     # st.sessioin_state.conversation
@@ -150,16 +102,16 @@ def handle_userinput(user_question) :
             st.write(bot_template.replace(
                 "{{MSG}}", message.content), unsafe_allow_html=True)
 
-
-    # (참고)  채팅창
+    ###############################
+    #          (참고)  채팅창        #
+    ###############################
     # 사전에 정의한 css, html양식을 st.wirte() 함수의 인자로 넣어주면 웹사이트 형식으로 출력한다.
     # st.write(user_template.replace("{{MSG}}", "Hellow Bot"), unsafe_allow_html=True)
     # st.write(bot_template.replace("{{MSG}}", "Hellow Human"), unsafe_allow_html=True)
 
-
-#######################################################################################
-#                                        Main                                         #
-#######################################################################################
+######################################################
+#                        Main                        #
+######################################################
 
 def main() :
     load_dotenv()
@@ -204,11 +156,6 @@ def main() :
             "Upload your PDFs here and click on 'process'", accept_multiple_files=True)
         if st.button("Process") :
             with st.spinner('Processing') :
-
-                ###############################
-                # save pdf to the data folder #
-                ###############################
-
                 ########################
                 #      get pdf text    #
                 ########################
@@ -225,8 +172,6 @@ def main() :
                 ########################
                 vectorstore = get_vectorstore(text_chunks)
 
-
-
                 ########################################
                 #  핵심함수를 이용한 conversation chain 생성 #
                 ########################################
@@ -235,11 +180,9 @@ def main() :
                 # 이 과정에서 변수가 전부 초기화됨.
                 # 따라서 이러한 초기화 및 생성이 반복되면 안되고 하나의 대화 세션으로 고정해주는 st.settion_state 객체안에 대화를 저장해야 날아가지 않음
                 # conversation이라는 속성을 신설하고 그 안에 대화내용을 key, value 쌍으로 저장 (딕셔너리 자료형)
-                loaded_vectorstore = call_vectorstore()
-                st.session_state.conversation = get_conversation_chain(loaded_vectorstore)
+                st.session_state.conversation = get_conversation_chain(vectorstore)
 
 
 
 if __name__ == "__main__":
-
     main()
