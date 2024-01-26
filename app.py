@@ -17,10 +17,11 @@ def save_pdf(_pdf_docs):
     # data 폴더가 없으면 생성
     if not os.path.exists('data'):
         os.makedirs('data')
-    # 업로드된 파일을 data 폴더에 저장
-    # vector 폴더에 해당 pdf 파일명으로(uploadedfile.name 속성 이용) binary 파일을 생성한 후
+    # uploadedfile.name 속성 이용하여 업로드된 파일을 하나씩 지정하여 binary 파일을 생성한 후
     # wb 옵션으로 binary writting이 가능하도록 한 상태로 일단 open
-    # 업로드한 파일내용이 임시저장된 uploadedfile.getbuffer 메소드를 불러와서, open된 binary 파일안에 내용을 binary로 읽어와서 저장
+    # uploaded_file.getbuffer()을 이용하여 업로드한 파일의 내용을 바이트 형태로 반환받고
+    # 이를 f.write에서는 binary로 읽어와서 data' 디렉토리에 있는 새 파일에 복사함
+    # 결과적으로 data 폴더안에 해당이름의 pdf파일이 복사되어 생성됨
     for uploaded_file in _pdf_docs:
         with open(os.path.join('data', uploaded_file.name), 'wb') as f:
             f.write(uploaded_file.getbuffer())
@@ -78,12 +79,13 @@ def load_vectorstore():
     return loaded_vectorstore
 
 def update_vectorstore(_vectorstore):
-    # 로컬에 저장된 vectordb가 있는 경우
+    # 로컬에 저장된 vectordb가 있는 경우, 신규 db와 merge하여 save
     if os.path.exists(VECTORDB_PATH):
         embeddings = OpenAIEmbeddings()
         loaded_vectorstore = FAISS.load_local(VECTORDB_PATH, embeddings=embeddings)
         updated_vectorstore = loaded_vectorstore.merge_from(_vectorstore)
-    # 로컬에 저장된 vectordb가 없는 경우, vectorstore를 최초로 저장
+        save_vectorstore(updated_vectorstore)
+    # 로컬에 저장된 vectordb가 없는 경우, vectorstore를 최초로 save
     else :
         save_vectorstore(_vectorstore)
         updated_vectorstore = _vectorstore
@@ -270,43 +272,49 @@ def main() :
     with st.sidebar:
         st.header("Your documents")
 
-        # pdf를 업로드하고 pdf_docs객체를 생성
+        ###############################
+        #    Upload pdf to memory     #
+        ###############################
         pdf_docs = st.file_uploader(
             "Upload your PDFs here and click on 'process'", accept_multiple_files=True)
+
+        ###############################
+        #          Process pdf        #
+        ###############################
         if st.button("Process") :
             with st.spinner('Processing') :
 
-                ###############################
-                # save pdf to the data folder #
-                ###############################
+                ###################################
+                # 01. save pdf to the data folder #
+                ###################################
 
                 save_pdf(pdf_docs)
 
                 ########################
-                #      get pdf text    #
+                #   02. get pdf text   #
                 ########################
                 raw_text = get_pdf_text(pdf_docs)
 
-                ########################
-                #  get the text chunks #
-                ########################
+                ##########################
+                # 03.get the text chunks #
+                ##########################
                 text_chunks = get_text_chunk(raw_text)
                 st.write(text_chunks)
 
-                ########################
-                #  create vectorstore  #
-                ########################
+                ############################
+                #  04. create vectorstore  #
+                ############################
                 new_vectorstore = get_vectorstore(text_chunks)
 
-                ########################
-                #  update vectorstore  #
-                ########################
+                ############################
+                #  05. update vectorstore  #
+                ############################
 
                 update_vectorstore(new_vectorstore)
 
-                ########################################
-                #  핵심함수를 이용한 conversation chain 생성 #
-                ########################################
+                ####################################################
+                #  06.핵심함수를 이용한 conversation chain 생성 & 대화처리 #
+                ####################################################
                 # 핵심함수 get_conversation_chain_pdf() 함수를 사용하여, 첫째, 이전 대화내용을 읽어들이고, 둘째, 다음 대화 내용을 반환할 수 있는 객체를 생성
                 # 다만 streamlit 환경에서는 input이 추가되거나, 사용자가 버튼을 누르거나 하는 등 새로운 이벤트가 생기면 코드 전체를 다시 읽어들임
                 # 이 과정에서 변수가 전부 초기화됨.
