@@ -125,7 +125,7 @@ from langchain.chains import ConversationChain # 내부 DB없이 일반적인 ch
 #####################
 # 입력 : VectorDB
 # 출력 : 질문을 입력하면 입력된 상기 VectorDB에 대한 검색과 결과출력을 담당하는 객체를
-# CRchain(=Conversational Retrieval Chaing) 객체의 .from_llm의 메소드를 이용하여 생성하여 반환함
+# CRC(ConversationalRetrievalChain) 객체의 .from_llm의 메소드를 이용하여 생성하여 반환함
 
 def get_conversation_chain_pdf(_loaded_vectorscore):
 
