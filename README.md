@@ -14,7 +14,15 @@ TONchat은 2024년 1분기에 알파버전, 베타버전을 차례로 오픈하�
 
 TONchat의 목표는 단 한가지 입니다. Tokamak Network의 source code를 커뮤니티가 좀더 쉽게 활용할 수 있도록 지원하는 것입니다.
 
+
 # Installation
+### 01. Activate virtual environment
+It is recommended to use Anaconda virtual environment
 
-pip install -r requirements.txt
+    conda activate {{virtual environment}}
 
+### 02. Installation of packages
+You should use pip in the Anaconda path, not in the base pip. So, begin with 'python -m' please. For example:
+
+
+    python -m pip install -r requirements.txt
