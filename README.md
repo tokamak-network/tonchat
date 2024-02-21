@@ -1,5 +1,20 @@
-# Introduction
+# 01. Introduction
 
+TONchat is a question and answer service based on the chatGPT API. It not only stores code information such as various smart contracts developed by Tokamak Network and related annotations, but also various community-centered documents such as user guides and Q&As in a database and utilizes them as response resources.
+
+This configuration is commonly referred to as a RAG (Retrieval Augmented Generation) application and is one of the application services that utilizes LLM (Large Language Model) based AI as it is rapidly growing in recent years.
+
+In other words, a typical model such as chatGPT has two limitations: first, it does not contain any additional information after the cut off date when training ends, and second, it cannot answer questions about specialized or fringe areas beyond the information utilized for training.
+
+Therefore, RAG will build a separate DB related to such specific expertise, and the LLM engine will search for it first, and additional knowledge will be supplemented by previously learned knowledge or internet searches. This is an advantageous way to respond to specialized knowledge in specific fields.
+
+TONchat is expected to open the alpha and beta versions in the first quarter of 2024, followed by updates in the CI/CD field, such as the automatic collection of learning data, and feedback from users, and to complete development in the fourth quarter of 2024.
+
+After completion of development, we plan to transfer all rights to the development and use of TONchat (including commercial utilization) to the Tokamak Network's community. This will allow various knowledge and know-how generated within the community to be accumulated and easily shared, thereby removing barriers to not only the convenience of existing users but also the influx of new users.
+
+TONchat has only one goal. To make Tokamak Network's source code more accessible to the community.
+
+---------------------------------------------------------
 TONchat은 chatGPT API를 기반으로 운영되는 질의응답 서비스입니다. Tokamak Network가 개발한 다양한 스마트컨트랙트와 관련 주석처리와 같은 code 정보뿐만 아니라, user guide 및 질의응답 등 커뮤니티 중심으로 형성된 다양한 활용문서를 database로 저장하여 응답자료로 활용합니다.
 
 이와 같은 구성은 흔히 RAG(Retrieval Augmented Generation) application으로 불리고 있으며, 최근 LLM(Large Language Model) 기반의 AI가 급성장하면서, 이를 활용하는 응용서비스 중의 하나입니다.
@@ -14,15 +29,46 @@ TONchat은 2024년 1분기에 알파버전, 베타버전을 차례로 오픈하�
 
 TONchat의 목표는 단 한가지 입니다. Tokamak Network의 source code를 커뮤니티가 좀더 쉽게 활용할 수 있도록 지원하는 것입니다.
 
+# 02. Automation
+## Configuration
+TBD
 
-# Installation
+## How to manage
+TBD
+# 03. Governance
+TBD
+
+# 04. Installation
 ### 01. Activate virtual environment
-It is recommended to use Anaconda virtual environment
+It is recommended to use Anaconda virtual environment with python version 3.10
 
-    conda activate {{virtual environment}}
+    conda create -n {{your-virtual-environment}} python=3.10
+
+    conda activate {{your-virtual-environment}}
 
 ### 02. Installation of packages
-You should use pip in the Anaconda path, not in the base pip. So, begin with 'python -m' please. For example:
+
+At first, check your pip location is under your virtual environment as below :
+
+    ~/opt/anaconda3/envs/{{your-virtual-environment}}/bin/pip
+
+With the virtual enviroment, you can use its bundle pip and install packages using it as below.
 
 
-    python -m pip install -r requirements.txt
+    pip install -r requirements.txt
+
+### 03. Check installation
+
+Packages installed using pip are located in the virtual environment directory. You can check the installation as below :
+
+    pip list -v
+
+~/opt/anaconda3/envs/{{your-virtual-environment}}/lib/python3.12/site-packages
+
+Other packages installed using conda are located in the site-packages directory as below :
+
+    conda list
+
+~/opt/anaconda3/envs/{{your-virtual-environment}}
+
+

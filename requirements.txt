@@ -1,14 +1,15 @@
 # enumerate all the packages needed for the project
 langchain
 openai == 0.28.1 #openai API version should be 0.28.1
-pypdf2 # pypdf version should be 2
+pypdf
+pypdf2
 chromadb
 tiktoken
 streamlit-extras
 datetime
 
 python-dotenv
-faiss-cpu # faiss is fast vector DB
+faiss-cpu == 1.7.4 # faiss for python 3.10.x
 huggingface-hub
 instructorembedding
 sentence_transformers
