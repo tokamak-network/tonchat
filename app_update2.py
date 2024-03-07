@@ -62,9 +62,7 @@ from langchain.chains import ConversationalRetrievalChain
 ######################################################
 # 입력 : VectorDB
 # 출력 : 질문을 입력하면 DB 검색과 결과출력을 담당하는 ConversationalRetrievalChain.from_llm의 객체를 생성하여 반환함
-def get_conversation_chain(vectorscore):
-   # 메모리에 로드된 env파일에서 "OPENAI_API_KEY"라고 명명된 값을 변수로 저장
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+def get_conversation_chain(vectorscore, OPENAI_API_KEY):
     # 선택 1: 대화에 사용될 llm API 객체를 llm 변수에 저장
     llm = ChatOpenAI(
         temperature=0.1,    # 창의성 (0.0 ~ 2.0)
@@ -129,6 +127,10 @@ def handle_userinput(user_question) :
 
 def main() :
     load_dotenv()
+
+    # 메모리에 로드된 env파일에서 "OPENAI_API_KEY"라고 명명된 값을 변수로 저장
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
     st.set_page_config(page_title="TONchat", page_icon=":books:", layout="wide")
     # css, html관련 설정은 실제 대화관련 함수보다 앞에서 미리 실행해야 한다.
     st.write(css, unsafe_allow_html=True)
@@ -160,7 +162,7 @@ def main() :
 
 
     ###############################
-    #           파일 업로드          #
+    #           Sidebar           #
     ###############################
 
 
