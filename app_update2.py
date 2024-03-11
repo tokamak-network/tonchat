@@ -1,3 +1,4 @@
+import hashlib
 import streamlit as st
 from dotenv import load_dotenv
 import os
@@ -121,9 +122,50 @@ def handle_userinput(user_question) :
     # st.write(user_template.replace("{{MSG}}", "Hellow Bot"), unsafe_allow_html=True)
     # st.write(bot_template.replace("{{MSG}}", "Hellow Human"), unsafe_allow_html=True)
 
+
+
 ######################################################
-#                        Main                        #
+#              핵심 함수 handle_userinput              #
 ######################################################
+def admin_sidebar():
+    with st.sidebar:
+        st.header("Your documents")
+
+        # upload multiple documents
+        pdf_docs = st.file_uploader(
+            "Upload your PDFs here and click on 'process'", accept_multiple_files=True)
+        if st.button("Process") :
+            with st.spinner('Processing') :
+                ########################
+                #      get pdf text    #
+                ########################
+                raw_text = get_pdf_text(pdf_docs)
+
+                ########################
+                #  get the text chunks #
+                ########################
+                text_chunks = get_text_chunk(raw_text)
+                st.write(text_chunks)
+
+                ########################
+                #  create vector store #
+                ########################
+                vectorstore = get_vectorstore(text_chunks)
+
+                ########################################
+                #  핵심함수를 이용한 conversation chain 생성 #
+                ########################################
+                # 핵심함수 get_conversation_chain() 함수를 사용하여, 첫째, 이전 대화내용을 읽어들이고, 둘째, 다음 대화 내용을 반환할 수 있는 객체를 생성
+                # 다만 streamlit 환경에서는 input이 추가되거나, 사용자가 버튼을 누르거나 하는 등 새로운 이벤트가 생기면 코드 전체를 다시 읽어들임
+                # 이 과정에서 변수가 전부 초기화됨.
+                # 따라서 이러한 초기화 및 생성이 반복되면 안되고 하나의 대화 세션으로 고정해주는 st.settion_state 객체안에 대화를 저장해야 날아가지 않음
+                # conversation이라는 속성을 신설하고 그 안에 대화내용을 key, value 쌍으로 저장 (딕셔너리 자료형)
+                st.session_state.conversation = get_conversation_chain(vectorstore)
+
+
+##########################################################################################################
+#                                               Main                                                     #
+##########################################################################################################
 
 def main() :
     load_dotenv()
@@ -165,42 +207,25 @@ def main() :
     #           Sidebar           #
     ###############################
 
+    ####### Key Preparation (example)
+    # ### 1) Save your openai key in your local system
+    # your_openai_key = "120hx7gadvda12xh128998938495"
+    # ### 2) Convert your openai key to hashed value
+    # ADMIN_KEY = hashlib.sha256(admin_key.encode()).hexdigest()
 
+    ####### Current hased admin key
+    ADMIN_KEY = "290038dd71afed14b4d42132fc498988aa4fc1142cf6972169aecd531af2c9fa" #
 
+    # user key input
     with st.sidebar:
-        st.header("Your documents")
+        st.header("Admin Page")
+        user_key = st.text_input('Input OpenAI Key to update the system', 'Input here')
 
-        # upload multiple documents
-        pdf_docs = st.file_uploader(
-            "Upload your PDFs here and click on 'process'", accept_multiple_files=True)
-        if st.button("Process") :
-            with st.spinner('Processing') :
-                ########################
-                #      get pdf text    #
-                ########################
-                raw_text = get_pdf_text(pdf_docs)
-
-                ########################
-                #  get the text chunks #
-                ########################
-                text_chunks = get_text_chunk(raw_text)
-                st.write(text_chunks)
-
-                ########################
-                #  create vector store #
-                ########################
-                vectorstore = get_vectorstore(text_chunks)
-
-                ########################################
-                #  핵심함수를 이용한 conversation chain 생성 #
-                ########################################
-                # 핵심함수 get_conversation_chain() 함수를 사용하여, 첫째, 이전 대화내용을 읽어들이고, 둘째, 다음 대화 내용을 반환할 수 있는 객체를 생성
-                # 다만 streamlit 환경에서는 input이 추가되거나, 사용자가 버튼을 누르거나 하는 등 새로운 이벤트가 생기면 코드 전체를 다시 읽어들임
-                # 이 과정에서 변수가 전부 초기화됨.
-                # 따라서 이러한 초기화 및 생성이 반복되면 안되고 하나의 대화 세션으로 고정해주는 st.settion_state 객체안에 대화를 저장해야 날아가지 않음
-                # conversation이라는 속성을 신설하고 그 안에 대화내용을 key, value 쌍으로 저장 (딕셔너리 자료형)
-                st.session_state.conversation = get_conversation_chain(vectorstore)
-
+        if user_key == ADMIN_KEY:
+            st.write('Correct Key')
+            admin_sidebar()
+        else:
+            st.write('Incorrect Key')
 
 
 if __name__ == "__main__":
