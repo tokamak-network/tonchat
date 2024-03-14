@@ -63,7 +63,7 @@ from langchain.chains import ConversationalRetrievalChain
 ######################################################
 # 입력 : VectorDB
 # 출력 : 질문을 입력하면 DB 검색과 결과출력을 담당하는 ConversationalRetrievalChain.from_llm의 객체를 생성하여 반환함
-def get_conversation_chain(vectorscore, OPENAI_API_KEY):
+def get_conversation_chain(vectorstore, OPENAI_API_KEY):
     # 선택 1: 대화에 사용될 llm API 객체를 llm 변수에 저장
     llm = ChatOpenAI(
         temperature=0.1,    # 창의성 (0.0 ~ 2.0)
@@ -83,7 +83,7 @@ def get_conversation_chain(vectorscore, OPENAI_API_KEY):
         # 검색을 실행하는 llm 선택
         llm=llm,
         # 검색을 당하는 vector DB를 retriver 포맷으로 저장
-        retriever=vectorscore.as_retriever(),
+        retriever=vectorstore.as_retriever(),
         # 사용자와 대화내용을 메모리에 저장하여 같은 맥락에서 대화를 유지
         memory=memory
     )
@@ -91,10 +91,10 @@ def get_conversation_chain(vectorscore, OPENAI_API_KEY):
     return conversation_chain
 
 ######################################################
-#              핵심 함수 handle_userinput              #
+#        질의응답 생성 + 대화저장  = handle_userinput      #
 ######################################################
-# user에 받은 질문을 인자로 넣으면 대답을 반환하는 함수
-# 핵심함수 GCC에 의해 생성된 st.session_sate.converstaion 객체의 메소드를 활용하여 대답을 생성함
+# user_question 입력 --> GCC에 의해 생성된 st.session_sate.converstaion() --> response 생성
+
 def handle_userinput(user_question) :
     # 질문을 입력하면 DB 검색과 결과출력을 담당하는 ConversationalRetrievalChain.from_llm의 객체로 생성된 것이
     # st.sessioin_state.conversation
@@ -122,18 +122,37 @@ def handle_userinput(user_question) :
     # st.write(user_template.replace("{{MSG}}", "Hellow Bot"), unsafe_allow_html=True)
     # st.write(bot_template.replace("{{MSG}}", "Hellow Human"), unsafe_allow_html=True)
 
+####################################################################################
+# STEP 1 : st.file_uploader에 의해 생성된 pdf_docs 객체에 pdf원본파일을 기록하여 서버에 저장
+def save_pdf(_pdf_docs):
+    # data 폴더가 없으면 생성
+    if not os.path.exists('data'):
+        os.makedirs('data')
+    # uploadedfile.name 속성 이용하여 업로드된 파일을 하나씩 지정하여 binary 파일을 생성한 후
+    # wb 옵션으로 binary writting이 가능하도록 한 상태로 일단 open
+    # uploaded_file.getbuffer()을 이용하여 업로드한 파일의 내용을 바이트 형태로 반환받고
+    # 이를 f.write에서는 binary로 읽어와서 data' 디렉토리에 있는 새 파일에 복사함
+    # 결과적으로 data 폴더안에 해당이름의 pdf파일이 복사되어 생성됨
+    for uploaded_file in _pdf_docs:
+        with open(os.path.join('data', uploaded_file.name), 'wb') as f:
+            f.write(uploaded_file.getbuffer())
+
 
 
 ######################################################
-#              핵심 함수 handle_userinput              #
+#           관리자에게만 보이는 admin sidebar             #
 ######################################################
 def admin_sidebar():
     with st.sidebar:
-        st.header("Your documents")
+        st.header("Document Update")
 
         # upload multiple documents
         pdf_docs = st.file_uploader(
             "Upload your PDFs here and click on 'process'", accept_multiple_files=True)
+
+        # save multiple documents
+        save_pdf(pdf_docs)
+
         if st.button("Process") :
             with st.spinner('Processing') :
                 ########################
@@ -152,15 +171,18 @@ def admin_sidebar():
                 ########################
                 vectorstore = get_vectorstore(text_chunks)
 
-                ########################################
-                #  핵심함수를 이용한 conversation chain 생성 #
-                ########################################
-                # 핵심함수 get_conversation_chain() 함수를 사용하여, 첫째, 이전 대화내용을 읽어들이고, 둘째, 다음 대화 내용을 반환할 수 있는 객체를 생성
-                # 다만 streamlit 환경에서는 input이 추가되거나, 사용자가 버튼을 누르거나 하는 등 새로운 이벤트가 생기면 코드 전체를 다시 읽어들임
-                # 이 과정에서 변수가 전부 초기화됨.
-                # 따라서 이러한 초기화 및 생성이 반복되면 안되고 하나의 대화 세션으로 고정해주는 st.settion_state 객체안에 대화를 저장해야 날아가지 않음
-                # conversation이라는 속성을 신설하고 그 안에 대화내용을 key, value 쌍으로 저장 (딕셔너리 자료형)
-                st.session_state.conversation = get_conversation_chain(vectorstore)
+                # ########################################
+                # #  핵심함수를 이용한 conversation chain 생성 #
+                # ########################################
+                # # 핵심함수 get_conversation_chain() 함수를 사용하여, 첫째, 이전 대화내용을 읽어들이고, 둘째, 다음 대화 내용을 반환할 수 있는 객체를 생성
+                # # 다만 streamlit 환경에서는 input이 추가되거나, 사용자가 버튼을 누르거나 하는 등 새로운 이벤트가 생기면 코드 전체를 다시 읽어들임
+                # # 이 과정에서 변수가 전부 초기화됨.
+                # # 따라서 이러한 초기화 및 생성이 반복되면 안되고 하나의 대화 세션으로 고정해주는 st.settion_state 객체안에 대화를 저장해야 날아가지 않음
+                # # conversation이라는 속성을 신설하고 그 안에 대화내용을 key, value 쌍으로 저장 (딕셔너리 자료형)
+                # OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+                #
+                # # conversation_chain을 생성하여 session_state 객체의 conversation 객체로 저장한다.
+                # st.session_state.conversation = get_conversation_chain(vectorstore, OPENAI_API_KEY)
 
 
 ##########################################################################################################
@@ -192,16 +214,8 @@ def main() :
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = None
 
-    ###############################
-    #             질문창            #
-    ###############################
-    # 질문입력창
+    # 서비스명
     st.header("TONchat")
-    user_question = st.text_input("Ask a question about your documents")
-    # 질문이 저장되면 if문이 true가 되고, 질문에 대한 답변을 처리한다.
-    if user_question:
-        handle_userinput(user_question)
-
 
     ###############################
     #           Sidebar           #
@@ -214,18 +228,57 @@ def main() :
     # ADMIN_KEY = hashlib.sha256(admin_key.encode()).hexdigest()
 
     ####### Current hased admin key
-    ADMIN_KEY = "290038dd71afed14b4d42132fc498988aa4fc1142cf6972169aecd531af2c9fa" #
+    ADMIN_KEY_HASH = "290038dd71afed14b4d42132fc498988aa4fc1142cf6972169aecd531af2c9fa"
 
-    # user key input
     with st.sidebar:
-        st.header("Admin Page")
-        user_key = st.text_input('Input OpenAI Key to update the system', 'Input here')
+        st.header("Admin login")
 
-        if user_key == ADMIN_KEY:
-            st.write('Correct Key')
+        # 로그인 안된 상태라면 seession_state 객체에 logged_in 속성을 False로 초기화
+        if 'logged_in' not in st.session_state:
+            st.session_state.logged_in = False
+
+        # user key 입력창
+        user_key = st.text_input('Input OpenAI Key to update the system', type='password')
+
+        # submit 버튼을 누르면 user key의 해시값만 받아와서 admin key hash 값과 비교하여 같은지 검증
+        if st.button('Submit'):
+            user_key_hash = hashlib.sha256(user_key.encode()).hexdigest()
+            if user_key_hash == ADMIN_KEY_HASH:
+                st.write('Hello, admin !')
+                # admin이 맞다면 session_state의 logged_in 속성을 True로 설정 --> 페이지 전체의 re-rendering을 막을 수 있음
+                # loggend_in이 true가 아니면 이벤트기반의 프레임워크인 streamlit은 버튼 클릭 등의 이벤트가 발생시 마다 페이지 전체를 re-rendering 실시함
+                st.session_state.logged_in = True
+            else:
+                st.write('Incorrect Key')
+
+        if st.session_state.logged_in:
             admin_sidebar()
-        else:
-            st.write('Incorrect Key')
+
+
+    ###############################
+    #         질의응답 준비          #
+    ###############################
+
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+    # 저장된 vecotor DB를 가져와서 일반사용자의 질의응답을 준비한다.
+    loaded_vectorstore = load_vectorstore():
+
+    # 핵심함수 get_conversation_chain() 함수를 사용하여, 첫째, 이전 대화내용을 읽어들이고, 둘째, 다음 대화 내용을 반환할 수 있는 객체를 생성
+    # 다만 streamlit 환경에서는 input이 추가되거나, 사용자가 버튼을 누르거나 하는 등 새로운 이벤트가 생기면 코드 전체를 다시 읽어들임
+    # 이 과정에서 변수가 전부 초기화됨.
+    # 따라서 이러한 초기화 및 생성이 반복되면 안되고 하나의 대화 세션으로 고정해주는 st.settion_state 객체안에 대화를 저장해야 날아가지 않음
+    # conversation이라는 속성을 신설하고 그 안에 대화내용을 key, value 쌍으로 저장 (딕셔너리 자료형)
+    st.session_state.conversation = get_conversation_chain(loaded_vectorstore , OPENAI_API_KEY)
+
+    ###############################
+    #             질문창            #
+    ###############################
+    # 질문입력창
+    user_question = st.text_input("Ask a question about your documents")
+    # 질문이 저장되면 if문이 true가 되고, 질문에 대한 답변을 처리한다.
+    if user_question:
+        handle_userinput(user_question)
 
 
 if __name__ == "__main__":

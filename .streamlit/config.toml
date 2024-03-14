@@ -1,0 +1,5 @@
+# 'AxiosError: Request failed with status code 403' 에러 방지
+
+[server]
+enableXsrfProtection = false
+enableCORS = false
