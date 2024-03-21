@@ -11,7 +11,8 @@ import os # host server안에 db 폴더 생성하는 st.file_uploader.getbuffer(
 import numpy as np
 
 # 전역변수 : FAISS 인덱스 파일 경로
-VECTORDB_PATH = './vectordb'
+VECTORDB_PATH = './testdb'
+
 
 ##############################################################
 #                      openAPI Key 입력                       #
@@ -176,118 +177,6 @@ def update_vectorstore(_new_index):
     return updated_index
 
 
-#####################
-#  핵심 함수 GCC_pdf  #
-#####################
-# 입력 : VectorDB
-# 출력 : 질문을 입력하면 입력된 상기 VectorDB에 대한 검색과 결과출력을 담당하는 객체를
-# CRC(ConversationalRetrievalChain) 객체의 .from_llm의 메소드를 이용하여 생성하여 반환함
-
-from langchain.chat_models import ChatOpenAI # ConversationBufferMemory()의 인자로 들어갈 llm으로 ChatOpenAI모델을 사용하기로 함
-from langchain.memory import ConversationBufferMemory # 대화내용을 저장하는 memory
-from langchain.chains import ConversationalRetrievalChain # 내부 DB를 참조하여 chatGPT대화를 진행
-from langchain.chains import ConversationChain # 내부 DB없이 일반적인 chatGPT대화를 진행
-
-def get_conversation_chain_pdf(_loaded_vectorscore):
-
-    # 선택 1: 대화에 사용될 llm API 객체를 llm 변수에 저장
-    llm = ChatOpenAI(model_name='gpt-4')
-    # 선택 2: HuggingFaceHub를 llm 모델로 사용시
-    # from langchain.llms import HuggingFaceHub
-    # llm = HuggingFaceHub(repo_id="google/flan-t5-xxl", model_kwargs={"temperature":0.5, "max_length":512})
-
-    # 대화내용 저장 memory 객체 생성 : ConverstaionBufferMemory 클래스를 이용, 대화를 chat_history라는 key값으로 저장
-    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-
-    # llm 객체, memory 객체를 인자로 입력하여 DB 검색결과를 출력하는 ConversationalRetrievalChain.from_llm 객체를 생성
-    conversation_chain_pdf = ConversationalRetrievalChain.from_llm(
-        # 검색도구인 llm 모델의 종류를 입력
-        llm=llm,
-        # 검색대상인 vector DB를 retriver 포맷으로 변환
-        retriever = _loaded_vectorscore.as_retriever(),
-        # 사용자와 대화내용을 메모리에 저장하여 같은 맥락에서 대화를 유지
-        memory=memory
-    )
-    # ConversationalRetrievalChain.from_llm 객체인 convestaion_chain을 반환
-    return conversation_chain_pdf
-
-
-###########################
-#       보조함수 GCC        #
-###########################
-
-    # (참고)  채팅창
-    # 사전에 정의한 css, html양식을 st.wirte() 함수의 인자로 넣어주면 웹사이트 형식으로 출력한다.
-    # st.write(user_template.replace("{{MSG}}", "Hellow Bot"), unsafe_allow_html=True)
-    # st.write(bot_template.replace("{{MSG}}", "Hellow Human"), unsafe_allow_html=True)
-
-def get_conversation_chain():
-
-    # 선택 1: 대화에 사용될 llm API 객체를 llm 변수에 저장
-    llm = ChatOpenAI(model_name='gpt-4')
-    # 선택 2: HuggingFaceHub를 llm 모델로 사용시
-    # from langchain.llms import HuggingFaceHub
-    # llm = HuggingFaceHub(repo_id="google/flan-t5-xxl", model_kwargs={"temperature":0.5, "max_length":512})
-
-    # 대화내용 저장 memory 객체 생성 : ConverstaionBufferMemory 클래스를 이용, 대화를 history라는 key값으로 저장
-    memory = ConversationBufferMemory(memory_key="history", return_messages=True)
-
-    # llm 객체, memory 객체를 인자로 입력하여, 내부 DB없이 대화를 연속적인 대화를 생성하는 객체를 반환
-    conversation_chain = ConversationChain(llm=llm, memory=memory)
-
-    return conversation_chain
-
-
-##########################################
-# 핵심함수 handle_userinput : 1. 기본 응답    #
-##########################################
-
-def handle_userinput(_user_question) :
-    # 질문을 입력하면 DB 검색과 결과출력을 담당하는 ConversationalRetrievalChain.from_llm의 객체 -> st.sessioin_state.conversation
-    # 이 객체의 메소드로서 사용자의 질문은 ({'input': user_question}) 형태로 인자에 넣어주면 결과를 출력하고, 대화내용은 메모리에 저장된다.
-    # response['chat_history']에는 사용자의 질문과 대답이 저장되어 있다.
-    response = st.session_state.conversation({'input': _user_question}) # st.settion_state객체의 내장메소드에 사용자 질문을 받는 기능이 있을 것임
-    # st.write(response) # 딕셔너리로 출력되며 chat_history라는 key값에 질의/응답이 저장되어 있음을 알수있다.
-
-    # 'chat_history'를 key값으로 하여 이번의 질의응답만 저장되어 있는데, 이를 메모리에 누적에서 보관하여 전체 대화를 기록함
-    st.session_state.history = response['history']
-
-    # message 객체의 content 속성에 대화가 들어있으므로 이를 추출하여 탬플릿의 {{MSG}} 위치에 넣는 replace 메소드를 사용
-    for i, message in enumerate(st.session_state.history):
-        if i % 2 == 0:
-            st.write(user_template.replace(
-                "{{MSG}}", message.content), unsafe_allow_html=True)
-        else:
-            st.write(bot_template.replace(
-                "{{MSG}}", message.content), unsafe_allow_html=True)
-
-
-##################################################
-# 핵심함수 handle_userinput : 2. 로컬 pdf 활용한 응답  #
-##################################################
-# 인자인 user_question는 user로부터 받은 질문이며, 이를 인자로 넣으면 대답을 반환하는 함수
-# 내부에 GCC함수가 들어 있고, 대화 세션을 유지하는 st.session_sate.converstaion 메소드를 통해
-# 즉, 겉으로는 안드러나지만 st.session_sate.converstaion안에는 GCC 함수가 있음
-
-def handle_userinput_pdf(_user_question) :
-    # 질문을 입력하면 DB 검색과 결과출력을 담당하는 ConversationalRetrievalChain.from_llm의 객체 -> st.sessioin_state.conversation
-    # 이 객체의 메소드로서 사용자의 질문은 ({'question': user_question}) 형태로 인자에 넣어주면 결과를 출력하고, 대화내용은 메모리에 저장된다.
-    # response['chat_history']에는 사용자의 질문과 대답이 저장되어 있다.
-    response = st.session_state.conversation({'question': _user_question}) # st.settion_state객체의 내장메소드에 사용자 질문을 받는 기능이 있을 것임
-    # st.write(response) # 딕셔너리로 출력되며 chat_history라는 key값에 질의/응답이 저장되어 있음을 알수있다.
-
-    # 'chat_history'를 key값으로 하여 이번의 질의응답만 저장되어 있는데, 이를 메모리에 누적에서 보관하여 전체 대화를 기록함
-    st.session_state.chat_history = response['chat_history']
-
-    # message 객체의 content 속성에 대화가 들어있으므로 이를 추출하여 탬플릿의 {{MSG}} 위치에 넣는 replace 메소드를 사용
-    for i, message in enumerate(st.session_state.chat_history):
-        if i % 2 == 0:
-            st.write(user_template.replace(
-                "{{MSG}}", message.content), unsafe_allow_html=True)
-        else:
-            st.write(bot_template.replace(
-                "{{MSG}}", message.content), unsafe_allow_html=True)
-
 
 #######################################################################################
 #######################################################################################
@@ -301,47 +190,6 @@ def main() :
     st.set_page_config(page_title="TONchat", page_icon=":books:", layout="wide")
     # css, html관련 설정은 실제 대화관련 함수보다 앞에서 미리 실행해야 한다.
     st.write(css, unsafe_allow_html=True)
-
-    ###############################
-    #           0. 초기화           #
-    ###############################
-
-    # st.session_state.conversation = get_conversation_chain(vectorstore)을 통해
-    # sesstion_state 객체의 속성으로 conversation이 신설되고, 그 안에 딕셔너리로 질의/응답이 저장된다.
-    # { question : ddd, answer : ddd } 이런식이다.
-    # 이러한 저장이 이뤄지도록 일단 conversation 속성에 None으로 초기화를 시켜 준비해놓는다.
-    if "conversation" not in st.session_state:
-        st.session_state.conversation = None
-
-    if 'chat_history' not in st.session_state:
-        st.session_state.chat_history = None
-
-    if 'history' not in st.session_state:
-        st.session_state.history = None
-
-
-    ###############################
-    #         1. Question         #
-    ###############################
-    # 질문입력창
-    st.header("TONchat")
-    user_question = st.text_input("Ask a question about your documents")
-
-
-    ##############################
-    #         2. Answer          #
-    ##############################
-    loaded_vectorscore = load_vectorstore()
-    st.session_state.conversation = get_conversation_chain_pdf(loaded_vectorscore)
-    # 질문이 입력되어있다면 if문이 true가 되고, 질문에 대한 답변을 처리한다.
-    if user_question:
-        handle_userinput_pdf(user_question)
-    # 로컬에 저장된 vectordb가 없는 경우 -> GCC()함수를 사용하여 사용자질문에 답변한다
-    else :
-        st.session_state.conversation = get_conversation_chain()
-        # 질문이 입력되어있다면 if문이 true가 되고, 질문에 대한 답변을 처리한다.
-        if user_question:
-            handle_userinput(user_question)
 
 
     ####################################################
