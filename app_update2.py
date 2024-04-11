@@ -262,7 +262,7 @@ def main() :
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
     # 저장된 vecotor DB를 가져와서 일반사용자의 질의응답을 준비한다.
-    loaded_vectorstore = load_vectorstore():
+    loaded_vectorstore = load_vectorstore()
 
     # 핵심함수 get_conversation_chain() 함수를 사용하여, 첫째, 이전 대화내용을 읽어들이고, 둘째, 다음 대화 내용을 반환할 수 있는 객체를 생성
     # 다만 streamlit 환경에서는 input이 추가되거나, 사용자가 버튼을 누르거나 하는 등 새로운 이벤트가 생기면 코드 전체를 다시 읽어들임
