@@ -23,7 +23,7 @@ def get_pdf_text(pdf_docs):
             text += page.extract_text()
     return text
 
-def  get_text_chunk(text):
+def get_text_chunk(text):
     text_splitter = CharacterTextSplitter(
         separator="\n",
         chunk_size=1000,
@@ -68,7 +68,7 @@ def get_conversation_chain(vectorscore):
     # 선택 1: 대화에 사용될 llm API 객체를 llm 변수에 저장
     llm = ChatOpenAI(
         temperature=0.1,    # 창의성 (0.0 ~ 2.0)
-        model_name="gpt-3.5-turbo", # chatGPT-4 Turbo 사용
+        model_name="gpt-4-turbo-preview", # chatGPT-4 Turbo 사용
         openai_api_key=OPENAI_API_KEY # Automatically inferred from env var OPENAI_API_KEY if not provided.
         )
 
