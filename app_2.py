@@ -1,9 +1,15 @@
 import streamlit as st
 from dotenv import load_dotenv
+import os
 from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings # embedding에 사용할 2개의 API
-from langchain.vectorstores import FAISS # 문서검색을 담당하는 페이스북이 만든 고속 Vector DB. 로컬에 설치하며, 프로그램 종료시 DB는 삭제됨
+
+# (deprecatd) from langchain.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings
+from langchain_community.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings
+
+# (deprecatd) from langchain.vectorstores import FAISS # 문서검색을 담당하는 페이스북이 만든 고속 Vector DB. 로컬에 설치하며, 프로그램 종료시 DB는 삭제됨
+from langchain_community.vectorstores import FAISS
+
 from htmlTemplates import css, bot_template, user_template   # htmlTemplates.py 파일안에 있는 모듈들을 가져옴
 
 def get_pdf_text(pdf_docs):
@@ -17,7 +23,7 @@ def get_pdf_text(pdf_docs):
             text += page.extract_text()
     return text
 
-def  get_text_chunk(text):
+def get_text_chunk(text):
     text_splitter = CharacterTextSplitter(
         separator="\n",
         chunk_size=1000,
@@ -45,7 +51,9 @@ def get_vectorstore(text_chunks):
     return vectorstore
 
 # get_conversation_chain(vectorscore) 실행에 필요한 모듈
-from langchain.chat_models import ChatOpenAI # ConversationBufferMemory()의 인자로 들어갈 llm으로 ChatOpenAI모델을 사용하기로 함
+# (deprecated) from langchain.chat_models import ChatOpenAI # ConversationBufferMemory()의 인자로 들어갈 llm으로 ChatOpenAI모델을 사용하기로 함
+from langchain_community.chat_models import ChatOpenAI
+
 from langchain.memory import ConversationBufferMemory # 대화내용을 저장하는 memory
 from langchain.chains import ConversationalRetrievalChain
 
@@ -55,9 +63,15 @@ from langchain.chains import ConversationalRetrievalChain
 # 입력 : VectorDB
 # 출력 : 질문을 입력하면 DB 검색과 결과출력을 담당하는 ConversationalRetrievalChain.from_llm의 객체를 생성하여 반환함
 def get_conversation_chain(vectorscore):
-
+   # 메모리에 로드된 env파일에서 "OPENAI_API_KEY"라고 명명된 값을 변수로 저장
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     # 선택 1: 대화에 사용될 llm API 객체를 llm 변수에 저장
-    llm = ChatOpenAI()
+    llm = ChatOpenAI(
+        temperature=0.1,    # 창의성 (0.0 ~ 2.0)
+        model_name="gpt-4-turbo-preview", # chatGPT-4 Turbo 사용
+        openai_api_key=OPENAI_API_KEY # Automatically inferred from env var OPENAI_API_KEY if not provided.
+        )
+
     # 선택 2: HuggingFaceHub를 llm 모델로 사용시
     # from langchain.llms import HuggingFaceHub
     # llm = HuggingFaceHub(repo_id="google/flan-t5-xxl", model_kwargs={"temperature":0.5, "max_length":512})
@@ -114,11 +128,15 @@ def handle_userinput(user_question) :
 ######################################################
 
 def main() :
+    ###############################
+    #        웹페이지 전체 설정        #
+    ###############################
     load_dotenv()
     st.set_page_config(page_title="TONchat", page_icon=":books:", layout="wide")
-    # css, html관련 설정은 실제 대화관련 함수보다 앞에서 미리 실행해야 한다.
+    # st.write() 함수에 있어서 css, html관련 설정은 실제 대화수행 시점보다 미리 실행해야 한다.
     st.write(css, unsafe_allow_html=True)
 
+    # 구현 : db 폴더에 index.faiss가 있으면 로딩하기
 
     ###############################
     #             초기화            #
@@ -139,7 +157,7 @@ def main() :
     ###############################
     # 질문입력창
     st.header("TONchat")
-    user_question = st.text_input("Ask a question about your documents")
+    user_question = st.text_input("Ask a question about Tokamak Network")
     # 질문이 저장되면 if문이 true가 되고, 질문에 대한 답변을 처리한다.
     if user_question:
         handle_userinput(user_question)
@@ -152,8 +170,7 @@ def main() :
         st.header("Your documents")
 
         # upload multiple documents
-        pdf_docs = st.file_uploader(
-            "Upload your PDFs here and click on 'process'", accept_multiple_files=True)
+        pdf_docs = st.file_uploader("Upload your PDFs here and click on 'process'", accept_multiple_files=True)
         if st.button("Process") :
             with st.spinner('Processing') :
                 ########################
@@ -172,13 +189,20 @@ def main() :
                 ########################
                 vectorstore = get_vectorstore(text_chunks)
 
+                # 구현 : PDF 폴더를 만들어서 원본을 저장한다
+
+
+                # 구현 :
+                # if 기존에 저장된 index.faiss가 있다 : 그거랑 vectorstore를 합친다.
+                # else : vectorstore를 index.faiss라는 이름으로 local에 저장한다.
+
                 ########################################
                 #  핵심함수를 이용한 conversation chain 생성 #
                 ########################################
                 # 핵심함수 get_conversation_chain() 함수를 사용하여, 첫째, 이전 대화내용을 읽어들이고, 둘째, 다음 대화 내용을 반환할 수 있는 객체를 생성
                 # 다만 streamlit 환경에서는 input이 추가되거나, 사용자가 버튼을 누르거나 하는 등 새로운 이벤트가 생기면 코드 전체를 다시 읽어들임
                 # 이 과정에서 변수가 전부 초기화됨.
-                # 따라서 이러한 초기화 및 생성이 반복되면 안되고 하나의 대화 세션으로 고정해주는 st.settion_state 객체안에 대화를 저장해야 날아가지 않음
+                # 따라서 이러한 초기화 및 생성이 반복되면 안되고 하나의 대화 세션으로 고정해주는 st.sessiion_state 객체안에 대화를 저장해야 날아가지 않음
                 # conversation이라는 속성을 신설하고 그 안에 대화내용을 key, value 쌍으로 저장 (딕셔너리 자료형)
                 st.session_state.conversation = get_conversation_chain(vectorstore)
 

@@ -166,8 +166,7 @@ def main() :
         st.header("Your documents")
 
         # upload multiple documents
-        pdf_docs = st.file_uploader(
-            "Upload your PDFs here and click on 'process'", accept_multiple_files=True)
+        pdf_docs = st.file_uploader("Upload your PDFs here and click on 'process'", accept_multiple_files=True)
         if st.button("Process") :
             with st.spinner('Processing') :
                 ########################

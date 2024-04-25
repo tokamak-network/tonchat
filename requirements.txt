@@ -1,11 +1,13 @@
 # enumerate all the packages needed for the project
-langchain
+langchain == 0.1.7
+langchain-community == 0.0.20
 openai == 0.28.1 #openai API version should be 0.28.1
-pypdf
-pypdf2
+pypdf2 == 3.0.1 # pypdf version should be 2
 chromadb
 tiktoken
-streamlit-extras
+
+streamlit == 1.31.1
+streamlit-extras == 0.4.0
 datetime
 
 python-dotenv
