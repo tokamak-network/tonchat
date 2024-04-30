@@ -6,7 +6,7 @@ pypdf2 == 3.0.1 # pypdf version should be 2
 chromadb
 tiktoken
 
-streamlit == 1.31.1
+streamlit == 1.32.0
 streamlit-extras == 0.4.0
 datetime
 

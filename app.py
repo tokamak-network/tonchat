@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 import os
 from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
+import hashlib
 
 # (deprecatd) from langchain.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings
 from langchain_community.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings
@@ -116,12 +117,23 @@ def handle_userinput(user_question) :
             st.write(bot_template.replace(
                 "{{MSG}}", message.content), unsafe_allow_html=True)
 
-    ###############################
-    #          (참고)  채팅창        #
-    ###############################
-    # 사전에 정의한 css, html양식을 st.wirte() 함수의 인자로 넣어주면 웹사이트 형식으로 출력한다.
-    # st.write(user_template.replace("{{MSG}}", "Hellow Bot"), unsafe_allow_html=True)
-    # st.write(bot_template.replace("{{MSG}}", "Hellow Human"), unsafe_allow_html=True)
+######################################################
+#                    admin key 검증                   #
+######################################################
+
+def is_admin(_input_key):
+    # 문자열을 byte열로 encoding을 먼저 실시한 후, sha256으로 암호화
+    input_key_hash = hashlib.sha256(_input_key.encode()).hexdigest()
+    saved_key_hash = hashlib.sha256(os.getenv("OPENAI_API_KEY").encode()).hexdigest()
+    if input_key_hash == saved_key_hash :
+        return True
+
+###############################
+#          (참고)  채팅창        #
+###############################
+# 사전에 정의한 css, html양식을 st.wirte() 함수의 인자로 넣어주면 웹사이트 형식으로 출력한다.
+# st.write(user_template.replace("{{MSG}}", "Hellow Bot"), unsafe_allow_html=True)
+# st.write(bot_template.replace("{{MSG}}", "Hellow Human"), unsafe_allow_html=True)
 
 ######################################################
 #                        Main                        #
@@ -153,49 +165,58 @@ def main() :
     ###############################
     # 질문입력창
     st.header("TONchat")
-    user_question = st.text_input("Ask a question about Tokamak Network")
+    st.write("Ask a question about Tokamak Network's services")
+    st.write("- Titan L2 Network")
+    st.write("")
+    user_question = st.text_input("Input your question")
     # 질문이 저장되면 if문이 true가 되고, 질문에 대한 답변을 처리한다.
     if user_question:
         handle_userinput(user_question)
 
 
     ###############################
-    #           파일 업로드          #
+    #      sidebar 파일 업로드       #
     ###############################
     with st.sidebar:
-        st.header("Your documents")
+        # Admin login
+        with st.popover("Admin login"):
+            st.markdown("Admin key 🔑")
+            admin = is_admin(st.text_input("Input your admin key"))
+        if admin :
+            st.write("Hi, Admin !")
+            logout = st.button("Logout", type="primary")
+            st.header("Your documents")
+            # upload multiple documents
+            pdf_docs = st.file_uploader("Upload your PDFs here and click on 'process'", accept_multiple_files=True)
+            if st.button("Process") :
+                with st.spinner('Processing') :
+                    ########################
+                    #      get pdf text    #
+                    ########################
+                    raw_text = get_pdf_text(pdf_docs)
 
-        # upload multiple documents
-        pdf_docs = st.file_uploader("Upload your PDFs here and click on 'process'", accept_multiple_files=True)
-        if st.button("Process") :
-            with st.spinner('Processing') :
-                ########################
-                #      get pdf text    #
-                ########################
-                raw_text = get_pdf_text(pdf_docs)
+                    ########################
+                    #  get the text chunks #
+                    ########################
+                    text_chunks = get_text_chunk(raw_text)
+                    st.write(text_chunks)
 
-                ########################
-                #  get the text chunks #
-                ########################
-                text_chunks = get_text_chunk(raw_text)
-                st.write(text_chunks)
+                    ########################
+                    #  create vector store #
+                    ########################
+                    vectorstore = get_vectorstore(text_chunks)
 
-                ########################
-                #  create vector store #
-                ########################
-                vectorstore = get_vectorstore(text_chunks)
-
-                ########################################
-                #  핵심함수를 이용한 conversation chain 생성 #
-                ########################################
-                # 핵심함수 get_conversation_chain() 함수를 사용하여, 첫째, 이전 대화내용을 읽어들이고, 둘째, 다음 대화 내용을 반환할 수 있는 객체를 생성
-                # 다만 streamlit 환경에서는 input이 추가되거나, 사용자가 버튼을 누르거나 하는 등 새로운 이벤트가 생기면 코드 전체를 다시 읽어들임
-                # 이 과정에서 변수가 전부 초기화됨.
-                # 따라서 이러한 초기화 및 생성이 반복되면 안되고 하나의 대화 세션으로 고정해주는 st.sessiion_state 객체안에 대화를 저장해야 날아가지 않음
-                # conversation이라는 속성을 신설하고 그 안에 대화내용을 key, value 쌍으로 저장 (딕셔너리 자료형)
-                st.session_state.conversation = get_conversation_chain(vectorstore)
-
-
+                    ########################################
+                    #  핵심함수를 이용한 conversation chain 생성 #
+                    ########################################
+                    # 핵심함수 get_conversation_chain() 함수를 사용하여, 첫째, 이전 대화내용을 읽어들이고, 둘째, 다음 대화 내용을 반환할 수 있는 객체를 생성
+                    # 다만 streamlit 환경에서는 input이 추가되거나, 사용자가 버튼을 누르거나 하는 등 새로운 이벤트가 생기면 코드 전체를 다시 읽어들임
+                    # 이 과정에서 변수가 전부 초기화됨.
+                    # 따라서 이러한 초기화 및 생성이 반복되면 안되고 하나의 대화 세션으로 고정해주는 st.sessiion_state 객체안에 대화를 저장해야 날아가지 않음
+                    # conversation이라는 속성을 신설하고 그 안에 대화내용을 key, value 쌍으로 저장 (딕셔너리 자료형)
+                    st.session_state.conversation = get_conversation_chain(vectorstore)
+            else:
+                st.write("You are not admin")
 
 if __name__ == "__main__":
     main()
