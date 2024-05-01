@@ -13,6 +13,15 @@ from langchain_community.vectorstores import FAISS
 
 from htmlTemplates import css, bot_template, user_template   # htmlTemplates.py 파일안에 있는 모듈들을 가져옴
 
+##############################
+#             DB             #
+##############################
+# pdf 로딩 : pdf_docs = st.file_uploader()
+# 이후 3단계 : pdf_docs --(1)--> text --(2)-->  chunk --(3)--> vectorstore
+# (1) .extract_texts
+# (2) CTS
+# (3) FAISS.from_texts
+
 def get_pdf_text(pdf_docs):
     # 빈 text 배열 생성
     text = ""
@@ -35,10 +44,7 @@ def get_text_chunk(text):
     return chunks
 
 def get_vectorstore(text_chunks):
-    ##############################
-    #     embedding API 선택      #
-    ##############################
-
+    # embedding API 선택
     # 선택 1: OpenAI embedding API 사용시 (유료)
     embeddings = OpenAIEmbeddings()
 
@@ -48,10 +54,11 @@ def get_vectorstore(text_chunks):
     # model_name 인자값으로 hkunlp/instructor-xl을 입력
     # 단, 2개의 dependency를 설치해야 함 pip install instructorembedding sentence_transformers
     # embeddings = HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-xl")
+
     vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
     return vectorstore
 
-# get_conversation_chain(vectorscore) 실행에 필요한 모듈
+# get_conversation_chain(_vectorstore) 실행에 필요한 모듈
 # (deprecated) from langchain.chat_models import ChatOpenAI # ConversationBufferMemory()의 인자로 들어갈 llm으로 ChatOpenAI모델을 사용하기로 함
 from langchain_community.chat_models import ChatOpenAI
 
@@ -59,11 +66,11 @@ from langchain.memory import ConversationBufferMemory # 대화내용을 저장�
 from langchain.chains import ConversationalRetrievalChain
 
 ######################################################
-#  핵심 함수 GCC : get_conversation_chain(vectorscore) #
+#  핵심 함수 GCC : get_conversation_chain(_vectorstore) #
 ######################################################
-# 입력 : VectorDB
-# 출력 : 질문을 입력하면 DB 검색과 결과출력을 담당하는 ConversationalRetrievalChain.from_llm의 객체를 생성하여 반환함
-def get_conversation_chain(vectorscore):
+# chain 생성 3요소(LLM, retriever, memory) --> ConversationalRetrievalChain.from_llm(chain 생성 3요소)
+# 출력 : 질의응답을 담당하는 ConversationalRetrievalChain.from_llm(3요소) --> conversation_chain 객체 반환
+def get_conversation_chain(_vectorstore):
    # 메모리에 로드된 env파일에서 "OPENAI_API_KEY"라고 명명된 값을 변수로 저장
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     # 선택 1: 대화에 사용될 llm API 객체를 llm 변수에 저장
@@ -85,7 +92,7 @@ def get_conversation_chain(vectorscore):
         # 검색을 실행하는 llm 선택
         llm=llm,
         # 검색을 당하는 vector DB를 retriver 포맷으로 저장
-        retriever=vectorscore.as_retriever(),
+        retriever=_vectorstore.as_retriever(),
         # 사용자와 대화내용을 메모리에 저장하여 같은 맥락에서 대화를 유지
         memory=memory
     )
@@ -93,26 +100,45 @@ def get_conversation_chain(vectorscore):
     return conversation_chain
 
 ######################################################
-#              핵심 함수 handle_userinput              #
+#              핵심 함수 conversation_window              #
 ######################################################
-# user에 받은 질문을 인자로 넣으면 대답을 반환하는 함수
-# 핵심함수 GCC에 의해 생성된 st.session_sate.converstaion 객체의 메소드를 활용하여 대답을 생성함
-def handle_userinput(user_question) :
-    # 질문을 입력하면 DB 검색과 결과출력을 담당하는 ConversationalRetrievalChain.from_llm의 객체로 생성된 것이
-    # st.sessioin_state.conversation
-    # 따라서 객체의 메소드로서 사용자의 질문은 ({'question': user_question}) 형태로 인자에 넣어주면 결과를 출력하고, 대화내용은 메모리에 저장된다.
-    # response['chat_history']에는 사용자의 질문과 대답이 저장되어 있다.
-    response = st.session_state.conversation({'question': user_question}) # 객체의 내장메소드에 사용자 질문을 받는 기능이 있을 것임
-    # st.write(response) # 딕셔너리로 출력되며 chat_history라는 key값에 질의/응답이 저장되어 있음을 알수있다.
+# GCC함수를 통해 생성된 user와의 대화를 st.session_state에 별도로 저장 --> 프론트에 뿌려줌
 
-    # 'chat_history'를 key값으로 하여 이번의 질의응답만 저장되어 있는데, 이를 메모리에 누적에서 보관하여 전체 대화를 기록함
+def conversation_window(user_question) :
+    # 질의응답 역할: ConversationalRetrievalChain.from_llm() 객체 생성
+    # --> conversation_chain 객체
+    # --> st.sessioin_state.conversation에 저장
+    # 질문 --> ({'question': user_question}) 형태로 인자에 넣어주면 결과를 출력하고, 대화내용은 메모리에 저장
+    # 질문+답변 --> response['chat_history']에는 저장
+
+    ##################
+    #    질문 저장     #
+    ##################
+    # main() 함수 맨마지막에 st.session_state.conversation = get_conversation_chain(vectorstore) 에 의하여
+    # st.session_state.conversation에는 '질의응답'이 아니라 conversation_chain '함수' 그 자체가 저장되어 있음
+    # 따라서 conversation_chain() = ConversationalRetrievalChain.from_llm() 이므로
+    # conversation_chain()에서 ()안에 {'question': user_question} 형태로 인자를 넣어서 질문
+    response = st.session_state.conversation({'question': user_question})
+
+    # ConversationalRetrievalChain.from_llm()는 응답을 "객체로 반환"함.
+    # 따라서 response 안에는 응답객체가 저장되어 있으며, "객체의 key값이 chat_history"에 대응되는 value로서 질의/응답이 저장됨.
+    # 확인 --> st.write(response) 해보면 chat_history라는 key값에 질의/응답이 저장되어 있음을 알수있다.
+
+    ##################
+    #                #
+    ##################
+    # 응답객체에서 'chat_history'만을 추출한 후, st.session_state에서 별도로 누적적으로 보관하여 전체 대화를 기록함
     st.session_state.chat_history = response['chat_history']
 
-    # message 객체의 content 속성에 대화가 들어있으므로 이를 추출하여 탬플릿의 {{MSG}} 위치에 넣는 replace 메소드를 사용
+    # message 객체의 content 속성에 대화가 들어있으므로 이를 추출하여 탬플릿의 {{MSG}} 위치에 넣는 replace 메소드를 사용하여 대체
     for i, message in enumerate(st.session_state.chat_history):
+
+        # 0부터 시작하므로 사용자 질의는 항상 짝수번째 기록
         if i % 2 == 0:
             st.write(user_template.replace(
                 "{{MSG}}", message.content), unsafe_allow_html=True)
+
+        # bot의 응답은 항상 홀수번째 기록
         else:
             st.write(bot_template.replace(
                 "{{MSG}}", message.content), unsafe_allow_html=True)
@@ -127,6 +153,8 @@ def is_admin(_input_key):
     saved_key_hash = hashlib.sha256(os.getenv("OPENAI_API_KEY").encode()).hexdigest()
     if input_key_hash == saved_key_hash :
         return True
+    else :
+        return False
 
 ###############################
 #          (참고)  채팅창        #
@@ -146,77 +174,95 @@ def main() :
     st.write(css, unsafe_allow_html=True)
 
 
-    ###############################
-    #             초기화            #
-    ###############################
+    #####################################################
+    #               st.session_state 초기화               #
+    #####################################################
 
-    # st.session_state.conversation = get_conversation_chain(vectorstore)을 통해
-    # sesstion_state 객체의 속성으로 conversation이 신설되고, 그 안에 딕셔너리로 질의/응답이 저장된다.
+    # main() 함수 맨 아래에 있는 st.session_state.conversation = get_conversation_chain(vectorstore)을 통해
+    # session_state 객체의 속성으로 conversation 속성이 생성. 그 안에 딕셔너리로 질의/응답이 저장된다.
     # { question : ddd, answer : ddd } 이런식이다.
-    # 이러한 저장이 이뤄지도록 일단 conversation 속성에 None으로 초기화를 시켜 준비해놓는다.
+
+    # 실행에 앞서 conversation 초기화
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
 
+    # 실행에 앞서 chat_history 초기화
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = None
 
     ###############################
-    #             질문창            #
+    #            질문창             #
     ###############################
     # 질문입력창
     st.header("TONchat")
     st.write("Ask a question about Tokamak Network's services")
     st.write("- Titan L2 Network")
     st.write("")
+
+    # st.text_input()에 질문이 입력되면 True를 반환
     user_question = st.text_input("Input your question")
-    # 질문이 저장되면 if문이 true가 되고, 질문에 대한 답변을 처리한다.
+
+    # 질문이 들어오면 if문이 true가 되고, 질문에 대한 답변을 처리한다.
     if user_question:
-        handle_userinput(user_question)
+        conversation_window(user_question)
 
 
     ###############################
     #      sidebar 파일 업로드       #
     ###############################
     with st.sidebar:
-        # Admin login
         with st.popover("Admin login"):
             st.markdown("Admin key 🔑")
-            admin = is_admin(st.text_input("Input your admin key"))
-        if admin :
+
+            # 세션 상태에 admin 값이 없으면 초기화
+            if 'admin' not in st.session_state:
+                st.session_state.admin = False
+
+            # 입력 필드 값 변경 감지
+            admin_key = st.text_input("Input your admin key")
+            if st.button("Login"):
+                st.session_state.admin = is_admin(admin_key)
+
+        if st.session_state.admin:
             st.write("Hi, Admin !")
-            logout = st.button("Logout", type="primary")
+            if st.button("Logout", type='primary'):
+                st.session_state.admin = False
+                # 로그아웃 후 즉시 스크립트 재실행
+                st.experimental_rerun()
+
             st.header("Your documents")
             # upload multiple documents
             pdf_docs = st.file_uploader("Upload your PDFs here and click on 'process'", accept_multiple_files=True)
             if st.button("Process") :
                 with st.spinner('Processing') :
-                    ########################
-                    #      get pdf text    #
-                    ########################
+
+                    # DB 생성 3단계
+                    ##########################
+                    #     1. get pdf text    #
+                    ##########################
                     raw_text = get_pdf_text(pdf_docs)
 
-                    ########################
-                    #  get the text chunks #
-                    ########################
+                    ###########################
+                    #  2. get the text chunks #
+                    ###########################
                     text_chunks = get_text_chunk(raw_text)
                     st.write(text_chunks)
 
-                    ########################
-                    #  create vector store #
-                    ########################
+                    ###########################
+                    #  3. create vector store #
+                    ###########################
                     vectorstore = get_vectorstore(text_chunks)
 
-                    ########################################
-                    #  핵심함수를 이용한 conversation chain 생성 #
-                    ########################################
+                    #############################################################################
+                    #  conversation chain 으로 대화 --> st.session_state에 기록 --> 프론트에 대화 출력  #
+                    #############################################################################
                     # 핵심함수 get_conversation_chain() 함수를 사용하여, 첫째, 이전 대화내용을 읽어들이고, 둘째, 다음 대화 내용을 반환할 수 있는 객체를 생성
                     # 다만 streamlit 환경에서는 input이 추가되거나, 사용자가 버튼을 누르거나 하는 등 새로운 이벤트가 생기면 코드 전체를 다시 읽어들임
                     # 이 과정에서 변수가 전부 초기화됨.
                     # 따라서 이러한 초기화 및 생성이 반복되면 안되고 하나의 대화 세션으로 고정해주는 st.sessiion_state 객체안에 대화를 저장해야 날아가지 않음
                     # conversation이라는 속성을 신설하고 그 안에 대화내용을 key, value 쌍으로 저장 (딕셔너리 자료형)
                     st.session_state.conversation = get_conversation_chain(vectorstore)
-            else:
-                st.write("You are not admin")
+
 
 if __name__ == "__main__":
     main()
