@@ -1,8 +1,8 @@
 # enumerate all the packages needed for the project
 langchain == 0.1.7
 langchain-community == 0.0.20
-openai == 0.28.1 #openai API version should be 0.28.1
-pypdf2 == 3.0.1 # pypdf version should be 2
+openai == 0.28.1 #openai API version should be fixed at 0.28.1
+pypdf2 == 3.0.1
 chromadb
 tiktoken
 

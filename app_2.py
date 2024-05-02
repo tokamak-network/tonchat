@@ -1,6 +1,7 @@
 import streamlit as st
 from dotenv import load_dotenv
 import os
+import shutil # python standard library
 from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
 import hashlib
@@ -14,7 +15,7 @@ from langchain_community.vectorstores import FAISS
 from htmlTemplates import css, bot_template, user_template   # htmlTemplates.py 파일안에 있는 모듈들을 가져옴
 
 ##############################
-#             DB             #
+#        DB functions        #
 ##############################
 # pdf 로딩 : pdf_docs = st.file_uploader()
 # 이후 3단계 : pdf_docs --(1)--> text --(2)-->  chunk --(3)--> vectorstore
@@ -44,17 +45,6 @@ def get_text_chunk(text):
     return chunks
 
 def get_vectorstore(text_chunks):
-    # embedding API 선택
-    # 선택 1: OpenAI embedding API 사용시 (유료)
-    embeddings = OpenAIEmbeddings()
-
-    # 선택 2: 허깅페이스에서 제공하는 Instructor embedding API 사용시 (무료)
-    # 성능은 OpenAIEmbeddings보다 우수하지만 느리다.
-    # https://huggingface.co/hkunlp/instructor-xl
-    # model_name 인자값으로 hkunlp/instructor-xl을 입력
-    # 단, 2개의 dependency를 설치해야 함 pip install instructorembedding sentence_transformers
-    # embeddings = HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-xl")
-
     vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
     return vectorstore
 
@@ -100,20 +90,20 @@ def get_conversation_chain(_vectorstore):
     return conversation_chain
 
 ######################################################
-#              핵심 함수 conversation_window              #
+#            핵심 함수 conversation_window             #
 ######################################################
 # st.session_state.conversation에 GCC함수를 통해 생성된 user와의 대화객체가 저장된 상태
 # st.session_state.conversation 에서 대화내용만 추출 --> 프론트에 뿌려줌
 
 def conversation_window(user_question) :
-    # 질의응답 역할: ConversationalRetrievalChain.from_llm() 객체 생성
-    # --> conversation_chain 객체
+    # ConversationalRetrievalChain.from_llm() 실행
+    # --> conversation_chain 객체 반환
     # --> st.sessioin_state.conversation에 저장
-    # 질문 --> ({'question': user_question}) 형태로 인자에 넣어주면 결과를 출력하고, 대화내용은 메모리에 저장
-    # 질문+답변 --> response['chat_history']에는 저장
+    # 질문 --> ({'question': user_question}) 형태로 st.sessioin_state.conversation()에 인자로 입력 넣어주면 결과를 출력하고, 대화내용은 memory에 저장
+    # 질문+답변 전체이력을 별도저장 --> response['chat_history']에 저장
 
     ##################
-    #    질문 저장     #
+    #     질의응답     #
     ##################
     # main() 함수 맨마지막에 st.session_state.conversation = get_conversation_chain(vectorstore) 에 의하여
     # st.session_state.conversation에는 '질의응답'이 아니라 conversation_chain '함수' 그 자체가 저장되어 있음
@@ -125,9 +115,9 @@ def conversation_window(user_question) :
     # 따라서 response 안에는 응답객체가 저장되어 있으며, "객체의 key값이 chat_history"에 대응되는 value로서 질의/응답이 저장됨.
     # 확인 --> st.write(response) 해보면 chat_history라는 key값에 질의/응답이 저장되어 있음을 알수있다.
 
-    ##################
-    #                #
-    ##################
+    ################################
+    #  질의응답 누적저장 --> 프론트 게시  #
+    ################################
     # 응답객체에서 'chat_history'만을 추출한 후, st.session_state에서 별도로 누적적으로 보관하여 전체 대화를 기록함
     st.session_state.chat_history = response['chat_history']
 
@@ -164,6 +154,13 @@ def is_admin(_input_key):
 # st.write(user_template.replace("{{MSG}}", "Hellow Bot"), unsafe_allow_html=True)
 # st.write(bot_template.replace("{{MSG}}", "Hellow Human"), unsafe_allow_html=True)
 
+##############################
+#   selecting embeddings     #
+##############################
+# embedding API 선택
+# 선택 1: OpenAI embedding API 사용시 (유료)
+embeddings = OpenAIEmbeddings()
+
 ######################################################
 #                        Main                        #
 ######################################################
@@ -174,10 +171,33 @@ def main() :
     # css, html관련 설정은 실제 대화관련 함수보다 앞에서 미리 실행해야 한다.
     st.write(css, unsafe_allow_html=True)
 
+    # 선택 2: 허깅페이스에서 제공하는 Instructor embedding API 사용시 (무료)
+    # 성능은 OpenAIEmbeddings보다 우수하지만 느리다.
+    # https://huggingface.co/hkunlp/instructor-xl
+    # model_name 인자값으로 hkunlp/instructor-xl을 입력
+    # 단, 2개의 dependency를 설치해야 함 pip install instructorembedding sentence_transformers
+    # embeddings = HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-xl")
 
-    #####################################################
-    #        질의/응답 관련 st.session_state 초기화          #
-    #####################################################
+
+    ###############################
+    #      DB initialization      #
+    ###############################
+    # FAISS.save_local 메소드는 폴더가 없으면 error 출력대신 해당폴더를 생성한다는 장점이 있다
+    # 해당폴더안에 기존의 index.faiss, index.pkl 파일이 있는 경우에는 덮어쓴다
+    vectorstore_dir = "vectorstore"
+    vectorstore_file_path = 'vectorstore/index.faiss'
+    if not os.path.exists(vectorstore_file_path):
+        vectorstore_init = FAISS.from_texts(" ", embeddings)
+        vectorstore_init.save_local(vectorstore_dir)
+
+    ###############################
+    #         DB loading          #
+    ###############################
+    vectorstore_loaded = FAISS.load_local(vectorstore_dir, embeddings)
+
+    #######################################
+    #  질의/응답 관련 st.session_state 초기화  #
+    #######################################
 
     # main() 함수 맨 아래에 있는 st.session_state.conversation = get_conversation_chain(vectorstore)을 통해
     # session_state 객체의 속성으로 conversation 속성이 생성. 그 안에 딕셔너리로 질의/응답이 저장된다.
@@ -204,9 +224,9 @@ def main() :
     user_question = st.text_input("Input your question")
 
     # 질문이 들어오면 if문이 true가 되고, 질문에 대한 답변을 처리한다.
+    st.session_state.conversation = get_conversation_chain(vectorstore_loaded)
     if user_question:
         conversation_window(user_question)
-
 
     ###############################
     #      sidebar 파일 업로드       #
@@ -231,8 +251,9 @@ def main() :
                 # 로그아웃 후 즉시 스크립트 재실행(=page reload)
                 st.experimental_rerun()
 
-            st.header("DB update")
+            st.header("DB setup", divider='rainbow')
             # upload multiple documents
+            st.subheader("1. Add")
             pdf_docs = st.file_uploader("Only for updating DB, Upload PDFs and click on 'process'", accept_multiple_files=True)
             if st.button("Process") :
                 with st.spinner('Processing') :
@@ -252,17 +273,49 @@ def main() :
                     ###########################
                     # 3.chunk --> vectorstore #
                     ###########################
-                    vectorstore_in_memory = get_vectorstore(text_chunks)
+                    vectorstore_added = get_vectorstore(text_chunks)
+
+                    # merge with the existing DB
+                    vectorstore_merged = vectorstore_loaded.merge_from(vectorstore_added)
+                    vectorstore_merged.save_local(vectorstore_dir)
+                    st.experimental_rerun()
 
                     #############################################################################
-                    #  conversation chain 으로 대화 --> st.session_state에 기록 --> 프론트에 대화 출력  #
+                    #    conversation chain 대화 --> st.session_state에 기록 --> 프론트에 대화 출력    #
                     #############################################################################
                     # 핵심함수 get_conversation_chain() 함수를 사용하여, 첫째, 이전 대화내용을 읽어들이고, 둘째, 다음 대화 내용을 반환할 수 있는 객체를 생성
                     # 다만 streamlit 환경에서는 input이 추가되거나, 사용자가 버튼을 누르거나 하는 등 새로운 이벤트가 생기면 코드 전체를 다시 읽어들임
                     # 이 과정에서 변수가 전부 초기화됨.
                     # 따라서 이러한 초기화 및 생성이 반복되면 안되고 하나의 대화 세션으로 고정해주는 st.sessiion_state 객체안에 대화를 저장해야 날아가지 않음
                     # conversation이라는 속성을 신설하고 그 안에 대화내용을 key, value 쌍으로 저장 (딕셔너리 자료형)
-                    st.session_state.conversation = get_conversation_chain(vectorstore_disk)
+
+                    ######################################
+                    #        1. testing merged db        #
+                    ######################################
+
+                    st.session_state.conversation = get_conversation_chain(vectorstore_loaded)
+
+                    # ######################################
+                    # #        2. saving merged db         #
+                    # ######################################
+                    # # save permanently after tesign
+                    # if st.button("Add to DB"):
+                    #     vectorstore_merged.save_local(vectorstore_dir)
+                    #     st.experimental_rerun()
+
+
+            st.subheader("2. Delete")
+            if st.button("Initialize DB"):
+                # 해당 디렉토리가 존재하는지 확인
+                if os.path.exists(vectorstore_dir):
+                    # 디렉토리와 내용물 모두 삭제
+                    shutil.rmtree(vectorstore_dir)
+                    print(f"The directory '{vectorstore_dir}' has been deleted.")
+                else:
+                    print(f"The directory '{vectorstore_dir}' does not exist.")
+
+                # DB 업데이트후 후 즉시 스크립트 재실행(=page reload)
+                st.experimental_rerun()
 
 
 if __name__ == "__main__":
