@@ -5,13 +5,15 @@ import shutil # python standard library
 from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
 import hashlib
-
+# get_conversation_chain(_vectorstore) 실행에 필요한 모듈
+# (deprecated) from langchain.chat_models import ChatOpenAI # ConversationBufferMemory()의 인자로 들어갈 llm으로 ChatOpenAI모델을 사용하기로 함
+from langchain_community.chat_models import ChatOpenAI
+from langchain.memory import ConversationBufferMemory # 대화내용을 저장하는 memory
+from langchain.chains import ConversationalRetrievalChain
 # (deprecatd) from langchain.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings
 from langchain_community.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings
-
 # (deprecatd) from langchain.vectorstores import FAISS # 문서검색을 담당하는 페이스북이 만든 고속 Vector DB. 로컬에 설치하며, 프로그램 종료시 DB는 삭제됨
 from langchain_community.vectorstores import FAISS
-
 from htmlTemplates import css, bot_template, user_template   # htmlTemplates.py 파일안에 있는 모듈들을 가져옴
 
 ##############################
@@ -44,16 +46,9 @@ def get_text_chunk(text):
     chunks = text_splitter.split_text(text)
     return chunks
 
-def get_vectorstore(text_chunks):
-    vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
+def get_vectorstore(_text_chunks, _embeddings):
+    vectorstore = FAISS.from_texts(_text_chunks, _embeddings)
     return vectorstore
-
-# get_conversation_chain(_vectorstore) 실행에 필요한 모듈
-# (deprecated) from langchain.chat_models import ChatOpenAI # ConversationBufferMemory()의 인자로 들어갈 llm으로 ChatOpenAI모델을 사용하기로 함
-from langchain_community.chat_models import ChatOpenAI
-
-from langchain.memory import ConversationBufferMemory # 대화내용을 저장하는 memory
-from langchain.chains import ConversationalRetrievalChain
 
 ######################################################
 #  핵심 함수 GCC : get_conversation_chain(_vectorstore) #
@@ -154,12 +149,7 @@ def is_admin(_input_key):
 # st.write(user_template.replace("{{MSG}}", "Hellow Bot"), unsafe_allow_html=True)
 # st.write(bot_template.replace("{{MSG}}", "Hellow Human"), unsafe_allow_html=True)
 
-##############################
-#   selecting embeddings     #
-##############################
-# embedding API 선택
-# 선택 1: OpenAI embedding API 사용시 (유료)
-embeddings = OpenAIEmbeddings()
+
 
 ######################################################
 #                        Main                        #
@@ -168,8 +158,13 @@ embeddings = OpenAIEmbeddings()
 def main() :
     load_dotenv()
     st.set_page_config(page_title="TONchat", page_icon=":books:", layout="wide")
-    # css, html관련 설정은 실제 대화관련 함수보다 앞에서 미리 실행해야 한다.
-    st.write(css, unsafe_allow_html=True)
+
+    ##############################
+    #       embeddings setup     #
+    ##############################
+    # embedding API 선택
+    # 선택 1: OpenAI embedding API 사용시 (유료)
+    embeddings = OpenAIEmbeddings()
 
     # 선택 2: 허깅페이스에서 제공하는 Instructor embedding API 사용시 (무료)
     # 성능은 OpenAIEmbeddings보다 우수하지만 느리다.
@@ -178,6 +173,10 @@ def main() :
     # 단, 2개의 dependency를 설치해야 함 pip install instructorembedding sentence_transformers
     # embeddings = HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-xl")
 
+    ##############################
+    #      css, html setup       #
+    ##############################
+    st.write(css, unsafe_allow_html=True)
 
     ###############################
     #      DB initialization      #
@@ -187,8 +186,13 @@ def main() :
     vectorstore_dir = "vectorstore"
     vectorstore_file_path = 'vectorstore/index.faiss'
     if not os.path.exists(vectorstore_file_path):
-        vectorstore_init = FAISS.from_texts(" ", embeddings)
+        int_text = ["Tokamak Network offers customized L2 networks & simple way to deploy your own L2 based on your needs. Tokamak Network offers customized L2 networks & simple way to deploy your own L2 based on your needs"]
+        vectorstore_init = FAISS.from_texts(int_text, embeddings)
         vectorstore_init.save_local(vectorstore_dir)
+
+        if vectorstore_init is None:
+            st.error("'vectorstore_init' is None")
+            return
 
     ###############################
     #         DB loading          #
@@ -217,11 +221,21 @@ def main() :
     # 질문입력창
     st.header("TONchat")
     st.write("Ask a question about Tokamak Network's services")
-    st.write("- Titan L2 Network")
-    st.write("")
-
+    st.markdown('''
+    - Titan L2 Network
+      * Add Titan Network in Metamask
+      * Developer Guide : (current) User Guide
+      * Gas Estimation
+      * How to Create a Standard ERC20 Token in L2
+      * L2 fee
+      * Titan-Goerli L2 Testnet Dev Document
+      * Titan_User Guide
+      * Token Address
+      * What is different
+    ''')
+    st.subheader(":green[Enter your question]")
     # st.text_input()에 질문이 입력되면 True를 반환
-    user_question = st.text_input("Input your question")
+    user_question = st.text_input("", placeholder="예) 커스텀 ERC 20 토큰을 생성하는 방법을 알려달라")
 
     # 질문이 들어오면 if문이 true가 되고, 질문에 대한 답변을 처리한다.
     st.session_state.conversation = get_conversation_chain(vectorstore_loaded)
@@ -268,15 +282,25 @@ def main() :
                     #    2. text --> chunks   #
                     ###########################
                     text_chunks = get_text_chunk(raw_text)
-                    st.write(text_chunks)
+                    # st.write(text_chunks)
 
                     ###########################
                     # 3.chunk --> vectorstore #
                     ###########################
-                    vectorstore_added = get_vectorstore(text_chunks)
+                    # create vectorstore_added
+                    vectorstore_added = get_vectorstore(text_chunks, embeddings)
+                    st.write(vectorstore_added)
+                    if vectorstore_added is None:
+                        st.error("Failed to create 'vectorstore_added'")
+                        return
 
                     # merge with the existing DB
-                    vectorstore_merged = vectorstore_loaded.merge_from(vectorstore_added)
+                    vectorstore_merged = vectorstore_added.merge_from(vectorstore_loaded)
+                    if vectorstore_merged is None:
+                        st.error("vectorstore_merged is None")
+                        return
+
+                    # save merged db permanently to the disk
                     vectorstore_merged.save_local(vectorstore_dir)
                     st.experimental_rerun()
 
@@ -289,19 +313,8 @@ def main() :
                     # 따라서 이러한 초기화 및 생성이 반복되면 안되고 하나의 대화 세션으로 고정해주는 st.sessiion_state 객체안에 대화를 저장해야 날아가지 않음
                     # conversation이라는 속성을 신설하고 그 안에 대화내용을 key, value 쌍으로 저장 (딕셔너리 자료형)
 
-                    ######################################
-                    #        1. testing merged db        #
-                    ######################################
-
+                    vectorstore_loaded = FAISS.load_local(vectorstore_dir, embeddings)
                     st.session_state.conversation = get_conversation_chain(vectorstore_loaded)
-
-                    # ######################################
-                    # #        2. saving merged db         #
-                    # ######################################
-                    # # save permanently after tesign
-                    # if st.button("Add to DB"):
-                    #     vectorstore_merged.save_local(vectorstore_dir)
-                    #     st.experimental_rerun()
 
 
             st.subheader("2. Delete")
